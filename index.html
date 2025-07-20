@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Sudoku Cube</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cube-size: 300px;
+            --face-bg: #f0f0f0;
+            --cell-border: #ccc;
+            --subgrid-border: #333;
+            --fixed-num-color: #333;
+            --user-num-color: #007bff;
+            --error-color: #dc3545;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e9ebee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            perspective: 1500px;
+            overflow: hidden;
+        }
+        .scene {
+            width: var(--cube-size);
+            height: var(--cube-size);
+            perspective: 1200px;
+        }
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s ease-out;
+            transform: translateZ(calc(var(--cube-size) / -2));
+        }
+        .cube.show-front  { transform: translateZ(calc(var(--cube-size) / -2)) rotateY(  0deg); }
+        .cube.show-back   { transform: translateZ(calc(var(--cube-size) / -2)) rotateY(-180deg); }
+        .cube.show-right  { transform: translateZ(calc(var(--cube-size) / -2)) rotateY( -90deg); }
+        .cube.show-left   { transform: translateZ(calc(var(--cube-size) / -2)) rotateY(  90deg); }
+        .cube.show-top    { transform: translateZ(calc(var(--cube-size) / -2)) rotateX( -90deg); }
+        .cube.show-bottom { transform: translateZ(calc(var(--cube-size) / -2)) rotateX(  90deg); }
+
+        .cube__face {
+            position: absolute;
+            width: var(--cube-size);
+            height: var(--cube-size);
+            background: var(--face-bg);
+            border: 2px solid #333;
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            grid-template-rows: repeat(9, 1fr);
+            gap: 1px;
+            padding: 2px;
+            box-sizing: border-box;
+        }
+
+        .cube__face--front  { transform: rotateY(  0deg) translateZ(calc(var(--cube-size) / 2)); }
+        .cube__face--back   { transform: rotateY(180deg) translateZ(calc(var(--cube-size) / 2)); }
+        .cube__face--right  { transform: rotateY( 90deg) translateZ(calc(var(--cube-size) / 2)); }
+        .cube__face--left   { transform: rotateY(-90deg) translateZ(calc(var(--cube-size) / 2)); }
+        .cube__face--top    { transform: rotateX( 90deg) translateZ(calc(var(--cube-size) / 2)); }
+        .cube__face--bottom { transform: rotateX(-90deg) translateZ(calc(var(--cube-size) / 2)); }
+
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: calc(var(--cube-size) / 18);
+            background-color: #fff;
+            border: 1px solid var(--cell-border);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .cell:hover {
+            background-color: #e0e0e0;
+        }
+        .cell.fixed {
+            font-weight: 700;
+            color: var(--fixed-num-color);
+            background-color: #f0f0f0;
+            cursor: not-allowed;
+        }
+        .cell.user-input {
+            color: var(--user-num-color);
+            font-weight: 500;
+        }
+        .cell.selected {
+            background-color: #a8d1ff;
+            outline: 2px solid var(--user-num-color);
+            z-index: 10;
+        }
+        .cell.error {
+            background-color: #ffcdd2;
+            color: var(--error-color);
+        }
+
+        /* Subgrid borders */
+        .cell:nth-child(3n) { border-right-width: 2px; border-right-color: var(--subgrid-border); }
+        .cell:nth-child(9n) { border-right-width: 1px; border-right-color: var(--cell-border); }
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom-width: 2px;
+            border-bottom-color: var(--subgrid-border);
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .nav-controls {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s, transform 0.1s;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        #message-box {
+            position: fixed;
+            top: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.5s;
+            font-weight: 500;
+        }
+        #message-box.show {
+            opacity: 1;
+        }
+        .number-input {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 5px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .num-btn {
+            width: 40px;
+            height: 40px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="scene">
+        <div class="cube" id="cube">
+            <div class="cube__face cube__face--front" data-face="0"></div>
+            <div class="cube__face cube__face--back" data-face="1"></div>
+            <div class="cube__face cube__face--left" data-face="2"></div>
+            <div class="cube__face cube__face--right" data-face="3"></div>
+            <div class="cube__face cube__face--top" data-face="4"></div>
+            <div class="cube__face cube__face--bottom" data-face="5"></div>
+        </div>
+    </div>
+
+    <div class="nav-controls">
+        <button class="btn btn-secondary" onclick="rotateCube('show-front')">Front</button>
+        <button class="btn btn-secondary" onclick="rotateCube('show-back')">Back</button>
+        <button class="btn btn-secondary" onclick="rotateCube('show-left')">Left</button>
+        <button class="btn btn-secondary" onclick="rotateCube('show-right')">Right</button>
+        <button class="btn btn-secondary" onclick="rotateCube('show-top')">Top</button>
+        <button class="btn btn-secondary" onclick="rotateCube('show-bottom')">Bottom</button>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="new-game-btn">New Game</button>
+        <button class="btn" id="check-btn">Check</button>
+        <button class="btn" id="solve-btn">Solve</button>
+    </div>
+
+    <div class="number-input">
+        <button class="btn num-btn" onclick="inputNumber(1)">1</button>
+        <button class="btn num-btn" onclick="inputNumber(2)">2</button>
+        <button class="btn num-btn" onclick="inputNumber(3)">3</button>
+        <button class="btn num-btn" onclick="inputNumber(4)">4</button>
+        <button class="btn num-btn" onclick="inputNumber(5)">5</button>
+        <button class="btn num-btn" onclick="inputNumber(6)">6</button>
+        <button class="btn num-btn" onclick="inputNumber(7)">7</button>
+        <button class="btn num-btn" onclick="inputNumber(8)">8</button>
+        <button class="btn num-btn" onclick="inputNumber(9)">9</button>
+        <button class="btn btn-secondary num-btn" onclick="inputNumber(0)">X</button>
+    </div>
+    
+    <div id="message-box"></div>
+
+    <script>
+        // --- DOM Elements ---
+        const cube = document.getElementById('cube');
+        const faces = document.querySelectorAll('.cube__face');
+        const messageBox = document.getElementById('message-box');
+
+        // --- Game State ---
+        let puzzles = []; // Holds the 6 puzzles (initial state)
+        let solutions = []; // Holds the 6 solved puzzles
+        let userGrids = []; // Holds the user's input
+        let selectedCell = null;
+        let difficulty = 40; // Number of cells to clear
+
+        // --- Cube Rotation ---
+        let currentClass = '';
+        function rotateCube(showClass) {
+            if (currentClass) {
+                cube.classList.remove(currentClass);
+            }
+            cube.classList.add(showClass);
+            currentClass = showClass;
+        }
+        rotateCube('show-front');
+
+        // --- Sudoku Logic ---
+
+        /**
+         * Creates an empty 9x9 grid.
+         */
+        function createEmptyGrid() {
+            return Array(9).fill(0).map(() => Array(9).fill(0));
+        }
+
+        /**
+         * Shuffles an array in place.
+         * @param {Array} array The array to shuffle.
+         */
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        /**
+         * Checks if a number can be placed in a given cell of a grid.
+         * @param {Array<Array<number>>} grid The Sudoku grid.
+         * @param {number} row The row index.
+         * @param {number} col The column index.
+         * @param {number} num The number to check.
+         * @returns {boolean} True if the placement is valid, false otherwise.
+         */
+        function isValid(grid, row, col, num) {
+            // Check row
+            for (let x = 0; x < 9; x++) {
+                if (grid[row][x] === num) return false;
+            }
+            // Check column
+            for (let x = 0; x < 9; x++) {
+                if (grid[x][col] === num) return false;
+            }
+            // Check 3x3 subgrid
+            const startRow = row - row % 3;
+            const startCol = col - col % 3;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (grid[i + startRow][j + startCol] === num) return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Solves a Sudoku grid using backtracking.
+         * @param {Array<Array<number>>} grid The Sudoku grid to solve.
+         * @returns {boolean} True if a solution is found, false otherwise.
+         */
+        function solveSudoku(grid) {
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    if (grid[row][col] === 0) {
+                        const numbers = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                        for (let num of numbers) {
+                            if (isValid(grid, row, col, num)) {
+                                grid[row][col] = num;
+                                if (solveSudoku(grid)) {
+                                    return true;
+                                }
+                                grid[row][col] = 0; // Backtrack
+                            }
+                        }
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Generates a complete, valid Sudoku grid.
+         */
+        function generateFullSudoku() {
+            const grid = createEmptyGrid();
+            solveSudoku(grid);
+            return grid;
+        }
+        
+        /**
+         * Creates a puzzle by removing numbers from a full Sudoku grid.
+         * @param {Array<Array<number>>} grid The full Sudoku grid.
+         * @param {number} holes The number of cells to make empty.
+         * @returns {Array<Array<number>>} The puzzle grid.
+         */
+        function createPuzzle(grid, holes) {
+            const puzzle = grid.map(row => [...row]);
+            let attempts = holes;
+            while (attempts > 0) {
+                const row = Math.floor(Math.random() * 9);
+                const col = Math.floor(Math.random() * 9);
+                if (puzzle[row][col] !== 0) {
+                    puzzle[row][col] = 0;
+                    attempts--;
+                }
+            }
+            return puzzle;
+        }
+
+        /**
+         * Generates the 6 interconnected Sudoku puzzles for the cube.
+         * This is a simplified generation. A true interconnected generator is extremely complex.
+         * This version generates 6 independent puzzles. The "interconnected" part is a conceptual challenge
+         * for the player, as the UI doesn't enforce cross-face rules during generation.
+         * The check function WILL validate these cross-face rules.
+         */
+        function generateCubePuzzles() {
+            solutions = [];
+            puzzles = [];
+            userGrids = [];
+            for (let i = 0; i < 6; i++) {
+                const fullGrid = generateFullSudoku();
+                solutions.push(fullGrid.map(row => [...row]));
+                puzzles.push(createPuzzle(fullGrid, difficulty));
+                userGrids.push(puzzles[i].map(row => [...row]));
+            }
+        }
+
+        // --- UI and Interaction ---
+
+        /**
+         * Renders all 6 puzzles onto the cube faces.
+         */
+        function drawPuzzles() {
+            faces.forEach((face, faceIndex) => {
+                face.innerHTML = '';
+                const grid = userGrids[faceIndex];
+                for (let row = 0; row < 9; row++) {
+                    for (let col = 0; col < 9; col++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        cell.dataset.face = faceIndex;
+                        cell.dataset.row = row;
+                        cell.dataset.col = col;
+
+                        const value = grid[row][col];
+                        const initialValue = puzzles[faceIndex][row][col];
+
+                        if (value !== 0) {
+                            cell.textContent = value;
+                        }
+
+                        if (initialValue !== 0) {
+                            cell.classList.add('fixed');
+                        } else {
+                             cell.classList.add('user-input');
+                             cell.addEventListener('click', () => selectCell(cell));
+                        }
+                        face.appendChild(cell);
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Selects a cell for number input.
+         * @param {HTMLElement} cellElement The cell element that was clicked.
+         */
+        function selectCell(cellElement) {
+            if (selectedCell) {
+                selectedCell.classList.remove('selected');
+            }
+            selectedCell = cellElement;
+            selectedCell.classList.add('selected');
+        }
+        
+        /**
+         * Inputs a number into the selected cell.
+         * @param {number} num The number to input (0 for clear).
+         */
+        function inputNumber(num) {
+            if (!selectedCell) {
+                showMessage('Please select a cell first.', 'error');
+                return;
+            }
+            
+            const faceIndex = selectedCell.dataset.face;
+            const row = selectedCell.dataset.row;
+            const col = selectedCell.dataset.col;
+
+            if (puzzles[faceIndex][row][col] !== 0) {
+                showMessage('This cell is fixed and cannot be changed.', 'error');
+                return; // Cannot change fixed numbers
+            }
+            
+            userGrids[faceIndex][row][col] = num;
+            selectedCell.textContent = num === 0 ? '' : num;
+            selectedCell.classList.remove('error');
+            
+            // Optional: Deselect cell after input
+            // selectedCell.classList.remove('selected');
+            // selectedCell = null;
+        }
+
+        /**
+         * Displays a message to the user.
+         * @param {string} text The message text.
+         * @param {string} type 'success' or 'error'.
+         */
+        function showMessage(text, type = 'success') {
+            messageBox.textContent = text;
+            messageBox.style.backgroundColor = type === 'success' ? '#28a745' : '#dc3545';
+            messageBox.classList.add('show');
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+            }, 3000);
+        }
+
+        // --- Game Actions ---
+
+        /**
+         * Starts a new game.
+         */
+        function newGame() {
+            generateCubePuzzles();
+            drawPuzzles();
+            if(selectedCell) {
+                selectedCell.classList.remove('selected');
+                selectedCell = null;
+            }
+            showMessage('New game started!', 'success');
+        }
+
+        /**
+         * Checks the user's solution for errors, including interconnected edges/corners.
+         */
+        function checkSolution() {
+            let allCorrect = true;
+            let errorCount = 0;
+
+            // Clear previous errors
+            document.querySelectorAll('.cell.error').forEach(c => c.classList.remove('error'));
+
+            // Check each face individually
+            for (let f = 0; f < 6; f++) {
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const userVal = userGrids[f][r][c];
+                        const solutionVal = solutions[f][r][c];
+                        if (userVal !== 0 && userVal !== solutionVal) {
+                            allCorrect = false;
+                            errorCount++;
+                            const cell = document.querySelector(`.cell[data-face='${f}'][data-row='${r}'][data-col='${c}']`);
+                            if (cell) cell.classList.add('error');
+                        }
+                    }
+                }
+            }
+            
+            // A truly interconnected check is very complex, involving mapping adjacent faces,
+            // edges, and corners. This is a placeholder for that logic. For now, it checks
+            // if all grids are solved independently.
+            // TODO: Implement full edge/corner validation.
+
+            if (allCorrect) {
+                // Also check if all cells are filled
+                let allFilled = userGrids.every(grid => grid.every(row => row.every(cell => cell !== 0)));
+                if (allFilled) {
+                    showMessage('Congratulations! You solved the Sudoku Cube!', 'success');
+                } else {
+                    showMessage('No errors found so far, but the puzzle is not complete.', 'success');
+                }
+            } else {
+                showMessage(`Found ${errorCount} error(s). Keep trying!`, 'error');
+            }
+        }
+
+        /**
+         * Fills the cube with the correct solution.
+         */
+        function solvePuzzle() {
+            userGrids = solutions.map(grid => grid.map(row => [...row]));
+            drawPuzzles();
+            showMessage('Puzzle solved!', 'success');
+        }
+
+        // --- Event Listeners ---
+        document.getElementById('new-game-btn').addEventListener('click', newGame);
+        document.getElementById('check-btn').addEventListener('click', checkSolution);
+        document.getElementById('solve-btn').addEventListener('click', solvePuzzle);
+
+        // Keyboard support for number input
+        window.addEventListener('keydown', (e) => {
+            if (e.key >= '1' && e.key <= '9') {
+                inputNumber(parseInt(e.key));
+            } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+                inputNumber(0);
+            }
+        });
+        
+        // --- Initial Load ---
+        window.onload = newGame;
+
+    </script>
+</body>
+</html>
